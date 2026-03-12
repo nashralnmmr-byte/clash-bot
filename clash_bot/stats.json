@@ -1,0 +1,31 @@
+import requests
+from bs4 import BeautifulSoup
+
+def get_live_data():
+    # هذا الرابط لموقع الويكي الخاص بالملك البربري
+    url = "https://clashofclans.fandom.com/wiki/Barbarian_King"
+    print("--- جاري الاتصال بمصدر البيانات للتحديث ---")
+    
+    try:
+        # إرسال طلب للموقع لجلب الصفحة
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # البحث عن جدول البيانات في الصفحة
+        table = soup.find('table', {'class': 'wikitable'})
+        
+        # استخراج أول قيمة DPS كمثال (مستوى 1)
+        # ملاحظة: في النسخة النهائية سنستخرج كل المستويات
+        rows = table.find_all('tr')
+        first_level_data = rows[1].find_all('td')
+        dps_value = first_level_data[1].text.strip()
+        
+        print(f"✅ نجاح! القوة المحدثة للملك (مستوى 1) هي: {dps_value} DPS")
+        print("هذه البيانات تم سحبها الآن مباشرة من الإنترنت.")
+        
+    except Exception as e:
+        print(f"❌ خطأ في جلب البيانات: {e}")
+        print("تأكد من اتصالك بالإنترنت.")
+
+if __name__ == "__main__":
+    get_live_data()

@@ -1,3 +1,21 @@
+from flask import Flask
+from threading import Thread
+
+app_flask = Flask('')
+
+@app_flask.route('/')
+def home():
+    return "البوت يعمل الآن!"
+
+def run():
+    app_flask.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+
+
 import os
 import requests
 from telegram.ext import Application, MessageHandler, filters
@@ -30,6 +48,6 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     print("🚀 البوت يعمل الآن...")
     app.run_polling()
-
+keep_alive()
 if __name__ == '__main__':
     main()

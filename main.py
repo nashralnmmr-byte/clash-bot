@@ -4,12 +4,11 @@ from flask import Flask
 from threading import Thread
 from telegram.ext import Application, MessageHandler, filters
 
-# --- 1. جزء الـ Flask لإبقاء البوت مستيقظاً على Render ---
+# سيرفر خفيف لإبقاء البوت مستيقظاً
 app_flask = Flask('')
-
 @app_flask.route('/')
 def home():
-    return "البوت يعمل الآن بنجاح!"
+    return "Bot is alive!"
 
 def run():
     app_flask.run(host='0.0.0.0', port=8080)
@@ -18,41 +17,40 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# --- 2. بيانات البوت (Clash of Clans Data) ---
-TROOPS_URL = "https://raw.githubusercontent.com/warden-clash/clash-data/main/troops.json"
-BUILDINGS_URL = "https://raw.githubusercontent.com/warden-clash/clash-data/main/buildings.json"
-
-def get_data(name, url):
+# دالة ذكية لجلب البيانات مع معالجة الأخطاء
+def get_data(name):
+    url = "https://raw.githubusercontent.com/warden-clash/clash-data/main/troops.json"
     try:
-        response = requests.get(url).json()
-        for item in response:
-            if item['name'].lower() == name.lower():
-                # جلب البيانات بناءً على الصيغة الموجودة في ملفات الـ JSON
-                return f"🔍 الاسم: {item['name']}\n❤️ الصحة: {item.get('hp', 'غير معروف')}\n⚔️ الضرر: {item.get('dps', 'غير معروف')}"
-        return "❌ لم أجد معلومات حول هذا الاسم."
+        response = requests.get(url, timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            for item in data:
+                # التحقق من وجود الاسم في البيانات
+                if 'name' in item and item['name'].lower() == name.lower():
+                    return f"اسم الجندي: {item['name']}\nالصحة: {item.get('hp', 'N/A')}\nالضرر: {item.get('dps', 'N/A')}"
+            return "عذراً، لم أجد هذا الاسم في قاعدة البيانات."
+        return f"فشل الاتصال بالمصدر (كود: {response.status_code})"
     except Exception as e:
-        return "⚠️ حدث خطأ في جلب البيانات."
+        return f"خطأ تقني أثناء الجلب: {str(e)}"
 
 async def handle_message(update, context):
-    query = update.message.text
-    result = get_data(query, TROOPS_URL)
-    # إذا لم يجد في القوات، يبحث في المباني
-    if "❌" in result:
-        result = get_data(query, BUILDINGS_URL)
+    query = update.message.text.strip()
+    result = get_data(query)
     await update.message.reply_text(result)
 
-# --- 3. تشغيل البوت ---
 def main():
-    # سيحاول قراءة التوكن من Render أولاً، وإذا لم يجده سيستخدم التوكن الذي أرسلته
-    TOKEN = os.getenv('BOT_TOKEN') or "8305222145:AAESW75-Aj3uF4ETCPDgslqiu41l2V7Qn_8"
-    
+    # سحب التوكن من المتغير الذي أضفته في Render
+    TOKEN = os.getenv('BOT_TOKEN')
+    if not TOKEN:
+        print("خطأ: لم يتم العثور على BOT_TOKEN في إعدادات Render!")
+        return
+        
     app = Application.builder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-    
-    print("🚀 البوت بدأ العمل الآن...")
+    print("🚀 البوت بدأ العمل الآن بنجاح!")
     app.run_polling()
 
 if __name__ == '__main__':
-    keep_alive() # تشغيل خادم الويب المصغر
-    main()       # تشغيل البوت
-	
+    keep_alive()
+    main()
+

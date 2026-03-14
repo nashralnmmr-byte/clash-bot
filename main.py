@@ -1,56 +1,77 @@
+
 import os
 import requests
+import google.generativeai as genai
 from flask import Flask
 from threading import Thread
 from telegram.ext import Application, MessageHandler, filters
+import io
 
-# سيرفر خفيف لإبقاء البوت مستيقظاً
+# --- 1. إعداد سيرفر Flask للبقاء حياً على Render ---
 app_flask = Flask('')
 @app_flask.route('/')
-def home():
-    return "Bot is alive!"
+def home(): return "Strategic Oracle is Live!"
 
-def run():
-    app_flask.run(host='0.0.0.0', port=8080)
+def run(): app_flask.run(host='0.0.0.0', port=8080)
+def keep_alive(): Thread(target=run).start()
 
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
+# --- 2. إعداد ذكاء Gemini (نسخة Flash لدعم الصور) ---
+genai.configure(api_key=os.getenv("GEMINI_KEY"))
+# نستخدم gemini-1.5-flash لأنه الأسرع والأفضل في تحليل الصور
+model = genai.GenerativeModel('gemini-1.5-flash')
 
-# دالة ذكية لجلب البيانات مع معالجة الأخطاء
-def get_data(name):
-    url = "https://raw.githubusercontent.com/warden-clash/clash-data/main/troops.json"
+# دالة ذكية لتحليل النصوص والصور معاً
+async def get_strategic_reply(user_text, photo_bytes=None):
+    system_prompt = (
+        "أنت 'المستشار الاستراتيجي' لخبير كلاش أوف كلانس. "
+        "قواعدك: 1. إذا أرسل المستخدم صورة لقرية، حلل نقاط الضعف (موقع الدفاعات الجوية، الثغرات) واقترح جيشاً وخطه هجوم. "
+        "2. إذا سأل عن أرقام (DPS, HP)، أعطه أدق البيانات المتاحة للنسخة العالمية، وإذا سأل بالصينية ركز على نسخة Tencent. "
+        "3. كن لبقاً جداً ومحفزاً وافتح نقاشات حول 'الميتا' الحالية. "
+        "4. لا تقدم روابط مخططات دفاعية حالياً بناءً على رغبة القائد."
+    )
+    
     try:
-        response = requests.get(url, timeout=15)
-        if response.status_code == 200:
-            data = response.json()
-            for item in data:
-                # التحقق من وجود الاسم في البيانات
-                if 'name' in item and item['name'].lower() == name.lower():
-                    return f"اسم الجندي: {item['name']}\nالصحة: {item.get('hp', 'N/A')}\nالضرر: {item.get('dps', 'N/A')}"
-            return "عذراً، لم أجد هذا الاسم في قاعدة البيانات."
-        return f"فشل الاتصال بالمصدر (كود: {response.status_code})"
-    except Exception as e:
-        return f"خطأ تقني أثناء الجلب: {str(e)}"
-
-async def handle_message(update, context):
-    query = update.message.text.strip()
-    result = get_data(query)
-    await update.message.reply_text(result)
-
-def main():
-    # سحب التوكن من المتغير الذي أضفته في Render
-    TOKEN = os.getenv('BOT_TOKEN')
-    if not TOKEN:
-        print("خطأ: لم يتم العثور على BOT_TOKEN في إعدادات Render!")
-        return
+        if photo_bytes:
+            # تحليل الصورة مع النص
+            content = [system_prompt, {"mime_type": "image/jpeg", "data": photo_bytes}, user_text]
+            response = model.generate_content(content)
+        else:
+            # تحليل النص فقط
+            response = model.generate_content(f"{system_prompt}\n\nالمستخدم يسأل: {user_text}")
         
+        return response.text
+    except Exception as e:
+        return f"عذراً يا قائد، سجلاتي تعرضت لتشويش بسيط. حاول مجدداً! (Error: {str(e)})"
+
+# --- 3. معالجة الرسائل (نصوص وصور) ---
+async def handle_message(update, context):
+    user_text = update.message.text or update.message.caption or "حلل هذه الصورة يا مستشار"
+    waiting_msg = await update.message.reply_text("🔎 جاري فحص البيانات الاستراتيجية...")
+    
+    photo_bytes = None
+    if update.message.photo:
+        # إذا أرسل المستخدم صورة، نقوم بتحميلها ومعالجتها
+        photo_file = await update.message.photo[-1].get_file()
+        img_buffer = io.BytesIO()
+        await photo_file.download_to_memory(img_buffer)
+        photo_bytes = img_buffer.getvalue()
+
+    reply = await get_strategic_reply(user_text, photo_bytes)
+    await context.bot.edit_message_text(chat_id=update.effective_chat.id, message_id=waiting_msg.message_id, text=reply)
+
+# --- 4. التشغيل الرئيسي ---
+def main():
+    TOKEN = os.getenv('BOT_TOKEN')
+    if not TOKEN: return print("Missing BOT_TOKEN!")
+
     app = Application.builder().token(TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-    print("🚀 البوت بدأ العمل الآن بنجاح!")
+    
+    # معالجة النصوص والصور
+    app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, handle_message))
+    
+    print("🚀 المستشار الاستراتيجي جاهز للغزو!")
     app.run_polling()
 
 if __name__ == '__main__':
     keep_alive()
     main()
-

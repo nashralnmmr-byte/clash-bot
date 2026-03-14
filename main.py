@@ -16,7 +16,7 @@ def run(): app_flask.run(host='0.0.0.0', port=8080)
 def keep_alive(): Thread(target=run).start()
 
 # --- 2. إعداد ذكاء Gemini (نسخة Flash لدعم الصور) ---
-genai.configure(api_key=os.getenv("GEMINI_KEY"))
+genai.configure(api_key=os.getenv("GEMINI_KEY")
 # نستخدم gemini-1.5-flash لأنه الأسرع والأفضل في تحليل الصور
 model = genai.GenerativeModel('gemini-pro')
 
